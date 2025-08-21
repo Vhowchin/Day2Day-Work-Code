@@ -1,0 +1,39 @@
+# Done as an experiment at the start of my time at YouGov (former GFK-CPS), as a test to see if I could identify brands from likelihood with the help of TffidfVectorizer
+
+import argparse
+import sys
+import numpy as np
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", required=True)
+parser.add_argument("--output", required=False)
+args = parser.parse_args()
+
+df = pd.read_csv(args.input, sep=";", engine="python", on_bad_lines="skip")
+
+known_brands = df["New_Brand"].dropna().astype(str).unique()
+df["new_coded_brand"] = pd.NA
+df["likelihood"] = pd.NA
+
+if len(known_brands) > 0:
+    vectorizer = TfidfVectorizer(analyzer="char", ngram_range=(3, 5), lowercase=True)
+    brand_matrix = vectorizer.fit_transform(known_brands)
+
+    mask = df["New_Brand"].isna()
+    texts = df.loc[mask, "Article_Text"].fillna("").astype(str)
+    if len(texts) > 0:
+        article_matrix = vectorizer.transform(texts)
+        sims = cosine_similarity(article_matrix, brand_matrix)
+        best_idx = np.argmax(sims, axis=1)
+        best_scores = sims[np.arange(sims.shape[0]), best_idx]
+        best_brands = np.array(known_brands)[best_idx]
+        df.loc[mask, "new_coded_brand"] = best_brands
+        df.loc[mask, "likelihood"] = best_scores
+
+if args.output:
+    df.to_csv(args.output, index=False)
+else:
+    df.to_csv(sys.stdout, index=False)
