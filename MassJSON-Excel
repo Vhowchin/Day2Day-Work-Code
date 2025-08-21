@@ -1,0 +1,63 @@
+# Done to help the team extract JSON data to excel
+
+import pandas as pd
+import json
+
+def parse_json_column(row):
+    try:
+        return json.loads(row)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+def expand_groups(groups_data):
+    if isinstance(groups_data, list) and len(groups_data) > 0 and isinstance(groups_data[0], dict):
+        groups_expanded = pd.json_normalize(groups_data, sep='_').iloc[0].to_dict()
+        return groups_expanded
+    return {}
+
+def expand_discount_lines(discount_lines_data):
+    if isinstance(discount_lines_data, list) and len(discount_lines_data) > 0 and isinstance(discount_lines_data[0], dict):
+        discount_lines_expanded = pd.json_normalize(discount_lines_data, sep='_').iloc[0].to_dict()
+        return discount_lines_expanded
+    return {}
+
+def expand_data(row):
+    base_info = {
+        'receipt_id': row['receipt_id'],
+        'source': row['source'],
+        'date_time': row['date_time']
+    }
+   
+    items = row['parsed_raw_data'].get('items', [])
+    expanded_rows = []
+   
+    for item in items:
+        item_info = base_info.copy()
+        
+        if 'groups' in item:
+            groups_expansion = expand_groups(item['groups'])
+            item_info.update(groups_expansion)
+            item.pop('groups', None)  # Remove original 'groups' field to avoid duplication
+        
+        if 'discount_lines' in item:
+            discount_lines_expansion = expand_discount_lines(item['discount_lines'])
+            item_info.update(discount_lines_expansion)
+            item.pop('discount_lines', None)  # Remove original 'discount_lines' field to avoid duplication
+        
+        item_info.update(item)
+        expanded_rows.append(item_info)
+   
+    return expanded_rows
+
+file_path = ''
+df = pd.read_excel(file_path)
+
+df['parsed_raw_data'] = df['raw_data'].apply(parse_json_column)
+
+df_cleaned = df.dropna(subset=['parsed_raw_data']).reset_index(drop=True)
+
+expanded_data = [expand_data(row) for _, row in df_cleaned.iterrows()]
+expanded_data_flat = pd.DataFrame([item for sublist in expanded_data for item in sublist])
+
+output_path = ''
+expanded_data_flat.to_excel(output_path, index=False)
