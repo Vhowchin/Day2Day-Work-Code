@@ -1,0 +1,52 @@
+# Written to be able to get access to Openfoodfacts API, and get thier data into a .csv
+
+import pandas as pd
+import requests
+import time
+from tqdm import tqdm
+
+csv_filepath = ''
+
+df = pd.read_csv(csv_filepath)
+
+API_URL = "https://world.openfoodfacts.org/api/v0/product/{}.json"
+
+def get_product_info(ean):
+    headers = {
+        'User-Agent': '',
+    }
+    response = requests.get(API_URL.format(ean), headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("status") == 1:
+            product = data.get("product", {})
+            return {
+                'EAN': ean,
+                'Article Name': product.get("product_name", ""),
+                'Brand': product.get("brands", ""),
+                'Volume': product.get("quantity", ""),
+                'Category': product.get("categories", "")
+            }
+        else:
+            return {'EAN': ean, 'Article Name': "", 'Brand': "", 'Volume': "", 'Category': ""}
+    else:
+        print(f"Error fetching data for EAN: {ean}, Status Code: {response.status_code}")
+        return {'EAN': ean, 'Article Name': "", 'Brand': "", 'Volume': "", 'Category': ""}
+
+product_info_list = []
+
+for index, row in tqdm(df.iterrows(), total=df.shape[0], desc="Processing"):
+    ean = row.get('EAN')
+    
+    if pd.notna(ean):
+        product_info = get_product_info(ean)
+        product_info_list.append(product_info)
+        time.sleep(1) 
+
+product_info_df = pd.DataFrame(product_info_list)
+
+merged_df = pd.merge(df, product_info_df, on='EAN', how='left')
+
+output_filepath = r'C:\Users\vrhowc\Downloads\Updated_Missing_Articles.csv'
+merged_df.to_csv(output_filepath, index=False)
